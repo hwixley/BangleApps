@@ -25,6 +25,7 @@ const MAX_HEALTH = 10;
 let player, zombies, game;
 let renderInterval;
 let touchHandlers = [];
+let frameCount = 0;
 
 // --- COMPILED HELPERS ---
 function dist(x1, x2, y1, y2) {
@@ -34,12 +35,10 @@ function dist(x1, x2, y1, y2) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function castRayDist(px, py, angle) {
+function castRayDist(px, py, cos, sin) {
   "compiled";
   var x = px;
   var y = py;
-  var cos = Math.cos(angle);
-  var sin = Math.sin(angle);
   var tx, ty;
   while (1) {
     x += cos;
@@ -51,6 +50,22 @@ function castRayDist(px, py, angle) {
   var dx = x - px;
   var dy = y - py;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+// --- Optimized moveZombies compiled and throttled to every 3 frames ---
+function moveZombiesCompiled() {
+  "compiled";
+  for (var i=0;i<zombies.length;i++) {
+    var z = zombies[i];
+    var dx = player.x - z.x, dy = player.y - z.y;
+    var distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > 0.5) {
+      dx /= distance; dy /= distance;
+      var rand = 0.5 + Math.random()*0.5; // simplified randomness for speed variation
+      z.x += dx * z.speed / rand;
+      z.y += dy * z.speed / rand;
+    }
+  }
 }
 
 // --- GAME FUNCTIONS ---
@@ -73,17 +88,17 @@ function spawnZombies(n) {
 }
 
 function moveZombies() {
+  // Only update every 3 frames to reduce CPU usage
+  if (frameCount % 3 === 0) {
+    moveZombiesCompiled();
+  }
+
   let now = getTime() * 1000;
   for (let i = 0; i < zombies.length; i++) {
     let z = zombies[i];
     let dx = player.x - z.x, dy = player.y - z.y;
     let distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance > 0.5) {
-      dx /= distance; dy /= distance;
-      let rand = Math.random() + 0.25;
-      z.x += dx * z.speed / rand;
-      z.y += dy * z.speed / rand;
-    } else if (now - player.lastHit > 500) {
+    if (distance <= 0.5 && now - player.lastHit > 500) {
       player.health--;
       player.lastHit = now;
       g.setBgColor("#f00").setColor(0).clear();
@@ -144,6 +159,7 @@ function renderHUD() {
 
 function renderScene() {
   if (!game.needsRender) return;
+  frameCount++;
   game.needsRender = false;
   game.lastRender = getTime() * 1000;
 
@@ -151,9 +167,12 @@ function renderScene() {
   g.setColor(0, 0, 0).fillRect(0, 0, SCREEN_WIDTH, cy);
   g.setColor(0.5, 0.25, 0).fillRect(0, cy, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-  for (let i = 0; i < SCREEN_WIDTH; i++) {
+  for (let i = 0; i < SCREEN_WIDTH; i += 2) {
     let angle = player.angle - FOV / 2 + (i / SCREEN_WIDTH) * FOV;
-    let d = castRayDist(player.x, player.y, angle);
+    let cosA = Math.cos(angle);
+    let sinA = Math.sin(angle);
+
+    let d = castRayDist(player.x, player.y, cosA, sinA);
     let h = Math.min(SCREEN_HEIGHT, TILE * SCREEN_HEIGHT / d);
     let c = Math.floor(Math.max(0, 7 - d * 0.25)) / 7;
     g.setColor(c, c, c);
