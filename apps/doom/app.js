@@ -230,10 +230,10 @@ function shoot() {
 let lastTouchTime = 0;
 function handleTouch(p) {
   const now = getTime()*1000;
-  if (now - lastTouchTime < 100) return; // throttle touch input to every 100ms
+  if (now - lastTouchTime < 50) return; // throttle touch input to every 100ms
   lastTouchTime = now;
 
-  const ROT = Math.PI / 16;
+  const ROT = Math.PI / 12;
   if (p.x + p.y < cx + cy) {
     if (p.x > p.y) movePlayer(true);
     else {
