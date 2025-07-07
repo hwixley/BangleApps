@@ -62,8 +62,8 @@ function moveZombiesCompiled() {
     if (distance > 0.5) {
       dx /= distance; dy /= distance;
       var rand = 0.5 + Math.random()*0.5; // simplified randomness for speed variation
-      z.x += dx * z.speed / rand;
-      z.y += dy * z.speed / rand;
+      z.x += dx * z.speed * rand;
+      z.y += dy * z.speed * rand;
     }
   }
 }
@@ -83,7 +83,7 @@ function spawnZombies(n) {
   for (let i = 0; i < n; i++) {
     let zx = (MAP[0].length - 1 - Math.floor(Math.random() * 3)) * TILE;
     let zy = (MAP.length - 1 - Math.floor(Math.random() * 3)) * TILE;
-    zombies.push({ x: zx, y: zy, health: 5, speed: 0.05 });
+    zombies.push({ x: zx, y: zy, health: 5, speed: 0.3 });
   }
 }
 
