@@ -1,5 +1,8 @@
 # DOOM (recreation)
-Simple DOOM zombie game.
+
+>This project is a fan-made recreation inspired by the original DOOM® game by id Software. It is not affiliated with, endorsed by, or associated with id Software, Bethesda Softworks, or ZeniMax Media in any way. Please see LICENSE for usage.
+
+Simple zombie game.
 
 You have to kill all zombies to win a round. The round number corresponds to the number of zombies in the room. The round number will increase indefinitely if you have what it takes.
 
