@@ -6,241 +6,266 @@ const SCREEN_HEIGHT = 176;
 let cx = SCREEN_WIDTH / 2,
   cy = SCREEN_HEIGHT / 2;
 
-function startGame() {
-  let currentLevel = 1;
-  let renderInterval, touchHandlers = [];
+  // --- CONSTANTS ---
+const TILE = 16;
+const MAP = [
+  [1,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,0,1],
+  [1,0,1,1,1,0,0,1],
+  [1,0,1,0,1,0,0,1],
+  [1,0,1,0,1,0,0,1],
+  [1,0,0,0,0,0,0,1],
+  [1,0,0,0,0,0,0,1],
+  [1,1,1,1,1,1,1,1],
+];
+const FOV = Math.PI / 4;
+const MAX_HEALTH = 10;
 
-  function startLevel(level) {
-    g.clear();
+// --- GLOBALS ---
+let player, zombies, game;
+let renderInterval;
+let touchHandlers = [];
 
-    const TILE = 16;
-    const MAP = [
-      [1,1,1,1,1,1,1,1],
-      [1,0,0,0,0,0,0,1],
-      [1,0,1,1,1,0,0,1],
-      [1,0,1,0,1,0,0,1],
-      [1,0,1,0,1,0,0,1],
-      [1,0,0,0,0,0,0,1],
-      [1,0,0,0,0,0,0,1],
-      [1,1,1,1,1,1,1,1],
-    ];
-    const FOV = Math.PI / 4;
-    const MAX_HEALTH = 10;
-    const START_X = 2 * TILE, START_Y = 2 * TILE;
-    const cx = SCREEN_WIDTH >> 1, cy = SCREEN_HEIGHT >> 1;
+// --- COMPILED HELPERS ---
+function dist(x1, x2, y1, y2) {
+  "compiled";
+  var dx = x1 - x2;
+  var dy = y1 - y2;
+  return Math.sqrt(dx * dx + dy * dy);
+}
 
-    let game = { level, lastRender: 0, needsRender: true };
-    let player = { x: START_X, y: START_Y, angle: 0, health: MAX_HEALTH, kills: 0, lastHit: 0 };
-    let zombies = [];
+function castRayDist(px, py, angle) {
+  "compiled";
+  var x = px;
+  var y = py;
+  var cos = Math.cos(angle);
+  var sin = Math.sin(angle);
+  var tx, ty;
+  while (1) {
+    x += cos;
+    y += sin;
+    tx = x >> 4; // divide by TILE=16 fast with bitshift
+    ty = y >> 4;
+    if (MAP[ty] && MAP[ty][tx] === 1) break;
+  }
+  var dx = x - px;
+  var dy = y - py;
+  return Math.sqrt(dx * dx + dy * dy);
+}
 
-    function resetPlayer() {
-      player.x = START_X;
-      player.y = START_Y;
-      player.angle = 0;
-      player.health = MAX_HEALTH;
-      player.kills = 0;
-      player.lastHit = 0;
+// --- GAME FUNCTIONS ---
+function resetPlayer() {
+  player.x = 2 * TILE;
+  player.y = 2 * TILE;
+  player.angle = 0;
+  player.health = MAX_HEALTH;
+  player.kills = 0;
+  player.lastHit = 0;
+}
+
+function spawnZombies(n) {
+  zombies = [];
+  for (let i = 0; i < n; i++) {
+    let zx = (MAP[0].length - 1 - Math.floor(Math.random() * 3)) * TILE;
+    let zy = (MAP.length - 1 - Math.floor(Math.random() * 3)) * TILE;
+    zombies.push({ x: zx, y: zy, health: 5, speed: 0.05 });
+  }
+}
+
+function moveZombies() {
+  let now = getTime() * 1000;
+  for (let i = 0; i < zombies.length; i++) {
+    let z = zombies[i];
+    let dx = player.x - z.x, dy = player.y - z.y;
+    let distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > 0.5) {
+      dx /= distance; dy /= distance;
+      let rand = Math.random() + 0.25;
+      z.x += dx * z.speed / rand;
+      z.y += dy * z.speed / rand;
+    } else if (now - player.lastHit > 500) {
+      player.health--;
+      player.lastHit = now;
+      g.setBgColor("#f00").setColor(0).clear();
     }
+  }
+}
 
-    function spawnZombies(n) {
-      zombies = [];
-      for (let i = 0; i < n; i++) {
-        let zx = (MAP[0].length - 1 - Math.floor(Math.random() * 3)) * TILE;
-        let zy = (MAP.length - 1 - Math.floor(Math.random() * 3)) * TILE;
-        zombies.push({ x: zx, y: zy, health: 5, speed: 0.05 });
-      }
-    }
+function movePlayer(backward) {
+  let dir = backward ? -1 : 1;
+  let nx = player.x + Math.cos(player.angle) * TILE / 4 * dir;
+  let ny = player.y + Math.sin(player.angle) * TILE / 4 * dir;
+  let tx = nx >> 4, ty = ny >> 4;
+  if (MAP[ty][tx] === 0) {
+    player.x = nx; player.y = ny;
+    game.needsRender = true;
+  }
+}
 
-    function moveZombies() {
-      let now = getTime() * 1000;
-      zombies.forEach(z => {
-        let dx = player.x - z.x, dy = player.y - z.y;
-        let dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist > 0.5) {
-          dx /= dist; dy /= dist;
-          let rand = Math.random() + 0.25;
-          z.x += dx * z.speed / rand;
-          z.y += dy * z.speed / rand;
-        } else if (now - player.lastHit > 500) {
-          player.health--;
-          player.lastHit = now;
-          g.setBgColor("#f00").setColor(0).clear();
-        }
-      });
-    }
+function zombieScreenData(z) {
+  let dx = z.x - player.x, dy = z.y - player.y;
+  let ang = Math.atan2(dy, dx);
+  let diff = ((player.angle - ang + Math.PI) % (2 * Math.PI)) - Math.PI;
+  if (Math.abs(diff) > FOV / 2) return null;
+  let d = dist(z.x, player.x, z.y, player.y);
+  if (d < TILE) d = TILE;
+  let h = Math.min(SCREEN_HEIGHT, TILE * 0.9 * SCREEN_HEIGHT / d);
+  let w = h / 3;
+  let sx = cx + Math.tan(-diff) * cx;
+  let sy = cy + 400 / d;
+  return { x: sx, y: sy, w: w, h: h };
+}
 
-    function dist(x1,x2,y1,y2) {
-      "compiled";
-      let dx = x1 - x2, dy = y1 - y2;
-      return Math.sqrt(dx*dx + dy*dy);
-    }
+function renderZombies() {
+  for (let i = 0; i < zombies.length; i++) {
+    let z = zombies[i];
+    let s = zombieScreenData(z);
+    if (!s) continue;
+    let alive = z.health > 0;
+    g.setColor(alive ? 0 : 1, alive ? 1 : 0, 0);
+    g.fillCircle(s.x, s.y - s.h / 2 - 20, 10);
+    g.setColor(1, 1, 1);
+    g.drawString(z.health, s.x, s.y - s.h / 2 - 30);
+    g.setColor(alive ? 0.12 : 1, alive ? 0.56 : 0, 0);
+    g.fillRect(s.x - s.w / 2, s.y - s.h / 4, s.x + s.w / 2, s.y + s.h / 4);
+    g.fillRect(s.x - s.w / 2 + 10, s.y - s.h / 2, s.x + s.w / 2 - 10, s.y + s.h / 2);
+  }
+}
 
-    function castRayDist(angle) {
-      "compiled";
-      let x = player.x, y = player.y;
-      let cos = Math.cos(angle), sin = Math.sin(angle);
-      while (true) {
-        x += cos;
-        y += sin;
-        let tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
-        if (MAP[ty] && MAP[ty][tx] === 1) break;
-      }
-      return dist(x, player.x, y, player.y);
-    }
+function renderHUD() {
+  g.setColor(1, 0, 0).fillRect(40, SCREEN_HEIGHT - 40, SCREEN_WIDTH - 40, SCREEN_HEIGHT - 20);
+  g.setColor(0, 1, 0).fillRect(40, SCREEN_HEIGHT - 40, 40 + (SCREEN_WIDTH - 80) * (player.health / MAX_HEALTH), SCREEN_HEIGHT - 20);
+  g.setFont("Vector", 10).drawString("Zombies:", 20, 20);
+  g.setFont("Vector", 20).drawString(zombies.length, 20, 30);
+  g.setFont("Vector", 10).drawString("Level " + game.level, cx - 10, 20);
+  g.drawString("Kills:", SCREEN_WIDTH - 40, 20);
+  g.setFont("Vector", 20).drawString(player.kills, SCREEN_WIDTH - 40, 30);
+}
 
-    function movePlayer(backward) {
-      let dir = backward ? -1 : 1;
-      let nx = player.x + Math.cos(player.angle) * TILE/4 * dir;
-      let ny = player.y + Math.sin(player.angle) * TILE/4 * dir;
-      let tx = Math.floor(nx / TILE), ty = Math.floor(ny / TILE);
-      if (MAP[ty][tx] === 0) {
-        player.x = nx; player.y = ny;
-        game.needsRender = true;
-      }
-    }
+function renderScene() {
+  if (!game.needsRender) return;
+  game.needsRender = false;
+  game.lastRender = getTime() * 1000;
 
-    function zombieScreenData(z) {
-      let dx = z.x - player.x, dy = z.y - player.y;
-      let ang = Math.atan2(dy, dx);
-      let diff = ((player.angle - ang + Math.PI) % (2 * Math.PI)) - Math.PI;
-      if (Math.abs(diff) > FOV / 2) return null;
-      let d = dist(z.x, player.x, z.y, player.y);
-      if (d < TILE) d = TILE;
-      let h = Math.min(SCREEN_HEIGHT, TILE * 0.9 * SCREEN_HEIGHT / d);
-      let w = h / 3;
-      let sx = cx + Math.tan(-diff) * cx;
-      let sy = cy + 400 / d;
-      return { x: sx, y: sy, w: w, h: h };
-    }
+  g.clear();
+  g.setColor(0, 0, 0).fillRect(0, 0, SCREEN_WIDTH, cy);
+  g.setColor(0.5, 0.25, 0).fillRect(0, cy, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    function renderZombies() {
-      zombies.forEach(z => {
-        let s = zombieScreenData(z);
-        if (!s) return;
-        g.setColor(z.health > 0 ? 0 : 1, z.health > 0 ? 1 : 0, 0);
-        g.fillCircle(s.x, s.y - s.h/2 - 20, 10);
-        g.setColor(1,1,1);
-        g.drawString(z.health, s.x, s.y - s.h/2 - 30);
-        g.setColor(z.health > 0 ? 0.12 : 1, z.health > 0 ? 0.56 : 0, 0);
-        g.fillRect(s.x - s.w/2, s.y - s.h/4, s.x + s.w/2, s.y + s.h/4);
-        g.fillRect(s.x - s.w/2 + 10, s.y - s.h/2, s.x + s.w/2 - 10, s.y + s.h/2);
-      });
-    }
-
-    function renderHUD() {
-      g.setColor(1,0,0).fillRect(40, SCREEN_HEIGHT-40, SCREEN_WIDTH-40, SCREEN_HEIGHT-20);
-      g.setColor(0,1,0).fillRect(40, SCREEN_HEIGHT-40,
-        40+(SCREEN_WIDTH-80)*(player.health/MAX_HEALTH), SCREEN_HEIGHT-20);
-      g.setFont("Vector",10).drawString("Zombies:", 20, 20);
-      g.setFont("Vector",20).drawString(zombies.length, 20, 30);
-      g.setFont("Vector",10).drawString("Level "+game.level, cx-10, 20);
-      g.drawString("Kills:", SCREEN_WIDTH-40, 20);
-      g.setFont("Vector",20).drawString(player.kills, SCREEN_WIDTH-40, 30);
-    }
-
-    function renderScene() {
-      "compiled";
-      if (!game.needsRender) return;
-      game.needsRender = false;
-      game.lastRender = getTime() * 1000;
-      g.clear();
-      g.setColor(0,0,0).fillRect(0,0,SCREEN_WIDTH,cy);
-      g.setColor(0.5,0.25,0).fillRect(0,cy,SCREEN_WIDTH,SCREEN_HEIGHT);
-      for (let i = 0; i < SCREEN_WIDTH; i++) {
-        let angle = player.angle - FOV/2 + (i/SCREEN_WIDTH) * FOV;
-        let d = castRayDist(angle);
-        let h = Math.min(SCREEN_HEIGHT, TILE * SCREEN_HEIGHT / d);
-        let c = Math.floor(Math.max(0, 7 - d * 0.25)) / 7;
-        g.setColor(c,c,c);
-        let y = (SCREEN_HEIGHT - h)/2;
-        g.fillRect(i, y, i+1, y+h);
-      }
-      renderZombies();
-      renderHUD();
-      if (zombies.length == 0) {
-        g.setColor(0,1,0);
-        g.drawString("LEVEL SUCCESS", cx - 80, cy);
-      }
-      g.flip();
-    }
-
-    function shoot() {
-      let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 3 + Math.random() * 2, hit: true }];
-      let bulletTimer = setInterval(() => {
-        bullets.forEach((b,i) => {
-          g.setColor(1,1,1).fillCircle(b.x,b.y,b.s);
-          if (b.y > cy) b.y -= b.v;
-          b.s *= 0.9;
-          if (b.hit) {
-            zombies.forEach((z,j) => {
-              let s = zombieScreenData(z);
-              if (s && Math.abs(s.x - cx) < 20) {
-                z.health--;
-                if (z.health == 0) {
-                  player.kills++;
-                  g.setColor(1,0,0).drawString("KILL", cx, cy);
-                  setTimeout(() => zombies.splice(j,1), 500);
-                } else {
-                  g.setColor(1,0,0).drawString("HIT", cx, cy);
-                }
-                b.hit = false;
-              }
-            });
-          }
-          if (b.s < 2) bullets.splice(i,1);
-          else g.setColor(1,0,0).fillCircle(b.x,b.y,b.s);
-        });
-        g.flip();
-      }, 100);
-      setTimeout(() => clearInterval(bulletTimer), 2000);
-    }
-
-    function handleTouch(p) {
-      let ROT = Math.PI / 16;
-      if (p.x + p.y < cx + cy) {
-        if (p.x > p.y) movePlayer(true);
-        else { player.angle -= ROT; game.needsRender = true; }
-      } else {
-        if (p.x < p.y) movePlayer(false);
-        else { player.angle += ROT; game.needsRender = true; }
-      }
-    }
-
-    spawnZombies(level);
-    resetPlayer();
-    renderScene();
-
-    // Remove old handlers
-    touchHandlers.forEach(h => Bangle.removeListener("touch", h));
-    touchHandlers = [
-      (_, p) => handleTouch(p),
-      p => handleTouch(p)
-    ];
-    Bangle.on("touch", touchHandlers[0]);
-    Bangle.on("tap", touchHandlers[1]);
-
-    renderInterval = setInterval(() => {
-      moveZombies();
-      if (player.health <= 0) {
-        clearInterval(renderInterval);
-        g.setBgColor("#000").clear();
-        g.setColor(1,0,0).drawString("YOU DIED", cx - 50, cy);
-        return;
-      }
-      if (game.needsRender || getTime()*1000 - game.lastRender > 500)
-        renderScene();
-    }, 100);
-
-    setWatch(() => {
-      if (player.health > 0 && zombies.length > 0) shoot();
-      else if (zombies.length == 0) {
-        clearInterval(renderInterval);
-        setTimeout(() => startLevel(++currentLevel), 1500);
-      }
-    }, BTN1, { repeat: true });
+  for (let i = 0; i < SCREEN_WIDTH; i++) {
+    let angle = player.angle - FOV / 2 + (i / SCREEN_WIDTH) * FOV;
+    let d = castRayDist(player.x, player.y, angle);
+    let h = Math.min(SCREEN_HEIGHT, TILE * SCREEN_HEIGHT / d);
+    let c = Math.floor(Math.max(0, 7 - d * 0.25)) / 7;
+    g.setColor(c, c, c);
+    let y = (SCREEN_HEIGHT - h) / 2;
+    g.fillRect(i, y, i + 1, y + h);
   }
 
-  startLevel(currentLevel);
+  renderZombies();
+  renderHUD();
+
+  if (zombies.length === 0) {
+    g.setColor(0, 1, 0);
+    g.drawString("LEVEL SUCCESS", cx - 80, cy);
+  }
+  g.flip();
+}
+
+function shoot() {
+  let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 3 + Math.random() * 2, hit: true }];
+  let bulletTimer = setInterval(() => {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      let b = bullets[i];
+      g.setColor(1, 1, 1).fillCircle(b.x, b.y, b.s);
+      if (b.y > cy) b.y -= b.v;
+      b.s *= 0.9;
+      if (b.hit) {
+        for (let j = 0; j < zombies.length; j++) {
+          let z = zombies[j];
+          let s = zombieScreenData(z);
+          if (s && Math.abs(s.x - cx) < 20) {
+            z.health--;
+            if (z.health === 0) {
+              player.kills++;
+              g.setColor(1, 0, 0).drawString("KILL", cx, cy);
+              setTimeout(() => zombies.splice(j, 1), 500);
+            } else {
+              g.setColor(1, 0, 0).drawString("HIT", cx, cy);
+            }
+            b.hit = false;
+            break;
+          }
+        }
+      }
+      if (b.s < 2) bullets.splice(i, 1);
+      else g.setColor(1, 0, 0).fillCircle(b.x, b.y, b.s);
+    }
+    g.flip();
+  }, 100);
+  setTimeout(() => clearInterval(bulletTimer), 2000);
+}
+
+function handleTouch(p) {
+  const ROT = Math.PI / 16;
+  if (p.x + p.y < cx + cy) {
+    if (p.x > p.y) movePlayer(true);
+    else {
+      player.angle -= ROT;
+      game.needsRender = true;
+    }
+  } else {
+    if (p.x < p.y) movePlayer(false);
+    else {
+      player.angle += ROT;
+      game.needsRender = true;
+    }
+  }
+}
+
+function startLevel(level) {
+  game = { level, lastRender: 0, needsRender: true };
+  player = { x: 0, y: 0, angle: 0, health: 0, kills: 0, lastHit: 0 };
+
+  spawnZombies(level);
+  resetPlayer();
+  renderScene();
+
+  // Remove old touch handlers
+  touchHandlers.forEach(h => Bangle.removeListener("touch", h));
+  touchHandlers = [
+    (_, p) => handleTouch(p),
+    p => handleTouch(p)
+  ];
+  Bangle.on("touch", touchHandlers[0]);
+  Bangle.on("tap", touchHandlers[1]);
+
+  if (renderInterval) clearInterval(renderInterval);
+  renderInterval = setInterval(() => {
+    moveZombies();
+
+    if (player.health <= 0) {
+      clearInterval(renderInterval);
+      g.setBgColor("#000").clear();
+      g.setColor(1, 0, 0).drawString("YOU DIED", cx - 50, cy);
+      return;
+    }
+
+    if (game.needsRender || getTime() * 1000 - game.lastRender > 500) {
+      renderScene();
+    }
+  }, 100);
+
+  setWatch(() => {
+    if (player.health > 0 && zombies.length > 0) shoot();
+    else if (zombies.length === 0) {
+      clearInterval(renderInterval);
+      setTimeout(() => startLevel(level + 1), 1500);
+    }
+  }, BTN1, { repeat: true });
+}
+
+function startGame() {
+  startLevel(1);
 }
 
 function introAnim() {
