@@ -88,10 +88,7 @@ function spawnZombies(n) {
 }
 
 function moveZombies() {
-  // Only update every 3 frames to reduce CPU usage
-  if (frameCount % 3 === 0) {
-    moveZombiesCompiled();
-  }
+  moveZombiesCompiled();
 
   let now = getTime() * 1000;
   for (let i = 0; i < zombies.length; i++) {
@@ -137,13 +134,21 @@ function renderZombies() {
     let s = zombieScreenData(z);
     if (!s) continue;
     let alive = z.health > 0;
-    g.setColor(alive ? 0 : 1, alive ? 1 : 0, 0);
+    if (alive) {
+      g.setColor(0, 1, 0);
+    } else {
+      g.setColor(1, 0, 0);
+    }
     g.fillCircle(s.x, s.y - s.h / 2 - 20, 10);
     g.setColor(1, 1, 1);
     g.drawString(z.health, s.x, s.y - s.h / 2 - 30);
-    g.setColor(alive ? 0.12 : 1, alive ? 0.56 : 0, 0);
+    if (alive) {
+      g.setColor(0.12, 0.56, 0);
+    } else {
+      g.setColor(1, 0, 0);
+    }
     g.fillRect(s.x - s.w / 2, s.y - s.h / 4, s.x + s.w / 2, s.y + s.h / 4);
-    g.fillRect(s.x - s.w / 2 + 10, s.y - s.h / 2, s.x + s.w / 2 - 10, s.y + s.h / 2);
+    // g.fillRect(s.x - s.w / 2 + 10, s.y - s.h / 2, s.x + s.w / 2 - 10, s.y + s.h / 2);
   }
 }
 
@@ -159,15 +164,14 @@ function renderHUD() {
 
 function renderScene() {
   if (!game.needsRender) return;
-  frameCount++;
   game.needsRender = false;
-  game.lastRender = getTime() * 1000;
+  // game.lastRender = getTime() * 1000;
 
   g.clear();
   g.setColor(0, 0, 0).fillRect(0, 0, SCREEN_WIDTH, cy);
   g.setColor(0.5, 0.25, 0).fillRect(0, cy, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-  for (let i = 0; i < SCREEN_WIDTH; i += 2) {
+  for (let i = 0; i < SCREEN_WIDTH; i += 8) {
     let angle = player.angle - FOV / 2 + (i / SCREEN_WIDTH) * FOV;
     let cosA = Math.cos(angle);
     let sinA = Math.sin(angle);
@@ -177,7 +181,7 @@ function renderScene() {
     let c = Math.floor(Math.max(0, 7 - d * 0.25)) / 7;
     g.setColor(c, c, c);
     let y = (SCREEN_HEIGHT - h) / 2;
-    g.fillRect(i, y, i + 1, y + h);
+    g.fillRect(i, y, i + 6, y + h);
   }
 
   renderZombies();
@@ -224,7 +228,12 @@ function shoot() {
   setTimeout(() => clearInterval(bulletTimer), 2000);
 }
 
+let lastTouchTime = 0;
 function handleTouch(p) {
+  const now = getTime()*1000;
+  if (now - lastTouchTime < 100) return; // throttle touch input to every 100ms
+  lastTouchTime = now;
+
   const ROT = Math.PI / 16;
   if (p.x + p.y < cx + cy) {
     if (p.x > p.y) movePlayer(true);
@@ -260,6 +269,7 @@ function startLevel(level) {
 
   if (renderInterval) clearInterval(renderInterval);
   renderInterval = setInterval(() => {
+    frameCount++;
     moveZombies();
 
     if (player.health <= 0) {
@@ -269,10 +279,10 @@ function startLevel(level) {
       return;
     }
 
-    if (game.needsRender || getTime() * 1000 - game.lastRender > 500) {
+    if (game.needsRender || frameCount % 6 === 0) {
       renderScene();
     }
-  }, 100);
+  }, 150);
 
   setWatch(() => {
     if (player.health > 0 && zombies.length > 0) shoot();
