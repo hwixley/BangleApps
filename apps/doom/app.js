@@ -147,8 +147,7 @@ function renderZombies() {
     } else {
       g.setColor(1, 0, 0);
     }
-    g.fillRect(s.x - s.w / 2, s.y - s.h / 4, s.x + s.w / 2, s.y + s.h / 4);
-    // g.fillRect(s.x - s.w / 2 + 10, s.y - s.h / 2, s.x + s.w / 2 - 10, s.y + s.h / 2);
+    g.fillRect(s.x - s.w / 2, s.y - s.h / 2, s.x + s.w / 2, s.y + s.h / 2);
   }
 }
 
