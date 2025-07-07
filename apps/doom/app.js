@@ -278,7 +278,8 @@ function startLevel(level) {
       return;
     }
 
-    if (game.needsRender || frameCount % 6 === 0) {
+    if (game.needsRender || frameCount % 12 === 0) {
+      game.needsRender = true;
       renderScene();
     }
   }, 150);
