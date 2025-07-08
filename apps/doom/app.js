@@ -20,6 +20,7 @@ const MAP = [
 ];
 const FOV = Math.PI / 4;
 const MAX_HEALTH = 10;
+const CROSSHAIR_RADIUS = SCREEN_WIDTH / 8;
 
 // --- GLOBALS ---
 let player, zombies, game;
@@ -159,6 +160,11 @@ function renderHUD() {
   g.setFont("Vector", 10).drawString("Level " + game.level, cx - 10, 20);
   g.drawString("Kills:", SCREEN_WIDTH - 40, 20);
   g.setFont("Vector", 20).drawString(player.kills, SCREEN_WIDTH - 40, 30);
+  g.setColor(85,85,85)
+  g.fillRect(cx - CROSSHAIR_RADIUS*1.5, cy, cx - CROSSHAIR_RADIUS*0.5, cy)
+  g.fillRect(cx, cy - CROSSHAIR_RADIUS*0.5, cx, cy - CROSSHAIR_RADIUS*1.5)
+  g.fillRect(cx + CROSSHAIR_RADIUS*0.5, cy, cx + CROSSHAIR_RADIUS*1.5, cy)
+  g.fillRect(cx, cy + CROSSHAIR_RADIUS*1.5, cx, cy+CROSSHAIR_RADIUS*0.5)
 }
 
 function renderScene() {
@@ -169,8 +175,9 @@ function renderScene() {
   g.clear();
   g.setColor(0, 0, 0).fillRect(0, 0, SCREEN_WIDTH, cy);
   g.setColor(0.5, 0.25, 0).fillRect(0, cy, SCREEN_WIDTH, SCREEN_HEIGHT);
+  let COL_WIDTH = 12
 
-  for (let i = 0; i < SCREEN_WIDTH; i += 8) {
+  for (let i = 0; i < SCREEN_WIDTH; i += COL_WIDTH) {
     let angle = player.angle - FOV / 2 + (i / SCREEN_WIDTH) * FOV;
     let cosA = Math.cos(angle);
     let sinA = Math.sin(angle);
@@ -180,7 +187,7 @@ function renderScene() {
     let c = Math.floor(Math.max(0, 7 - d * 0.25)) / 7;
     g.setColor(c, c, c);
     let y = (SCREEN_HEIGHT - h) / 2;
-    g.fillRect(i, y, i + 6, y + h);
+    g.fillRect(i, y, i + COL_WIDTH, y + h);
   }
 
   renderZombies();
@@ -193,38 +200,39 @@ function renderScene() {
   g.flip();
 }
 
+let lastShootTime = 0;
 function shoot() {
-  let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 3 + Math.random() * 2, hit: true }];
+  const now = getTime()*1000;
+  if (now - lastShootTime < 100) return; // throttle shoot input to every 100ms
+  lastShootTime = now;
+  for (let j = 0; j < zombies.length; j++) {
+    let z = zombies[j];
+    let s = zombieScreenData(z);
+    if (s && Math.abs(s.x - cx) <= s.w/2) {
+      z.health--;
+      if (z.health === 0) {
+        player.kills++;
+        g.setColor(1, 0, 0).drawString("KILL", cx, cy);
+        setTimeout(() => zombies.splice(j, 1), 500);
+      } else {
+        g.setColor(1, 0, 0).drawString("HIT", cx, cy);
+      }
+      break;
+    }
+  }
+  let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 15 + Math.random() * 2, hit: true }];
   let bulletTimer = setInterval(() => {
     for (let i = bullets.length - 1; i >= 0; i--) {
       let b = bullets[i];
       g.setColor(1, 1, 1).fillCircle(b.x, b.y, b.s);
       if (b.y > cy) b.y -= b.v;
-      b.s *= 0.9;
-      if (b.hit) {
-        for (let j = 0; j < zombies.length; j++) {
-          let z = zombies[j];
-          let s = zombieScreenData(z);
-          if (s && Math.abs(s.x - cx) < 20) {
-            z.health--;
-            if (z.health === 0) {
-              player.kills++;
-              g.setColor(1, 0, 0).drawString("KILL", cx, cy);
-              setTimeout(() => zombies.splice(j, 1), 500);
-            } else {
-              g.setColor(1, 0, 0).drawString("HIT", cx, cy);
-            }
-            b.hit = false;
-            break;
-          }
-        }
-      }
+      b.s *= 0.68;
       if (b.s < 2) bullets.splice(i, 1);
       else g.setColor(1, 0, 0).fillCircle(b.x, b.y, b.s);
     }
     g.flip();
   }, 100);
-  setTimeout(() => clearInterval(bulletTimer), 2000);
+  setTimeout(() => clearInterval(bulletTimer), 500);
 }
 
 let lastTouchTime = 0;
@@ -233,7 +241,7 @@ function handleTouch(p) {
   if (now - lastTouchTime < 50) return; // throttle touch input to every 100ms
   lastTouchTime = now;
 
-  const ROT = Math.PI / 12;
+  const ROT = Math.PI / 10;
   if (p.x + p.y < cx + cy) {
     if (p.x > p.y) movePlayer(true);
     else {
