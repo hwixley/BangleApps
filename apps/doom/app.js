@@ -54,22 +54,56 @@ function castRayDist(px, py, cos, sin) {
 }
 
 function hasLineOfSight(z) {
+  // Convert world coords to tile coords (as floats)
+  let tileX = Math.floor(z.x / TILE);
+  let tileY = Math.floor(z.y / TILE);
+
+  const endX = Math.floor(player.x / TILE);
+  const endY = Math.floor(player.y / TILE);
+
   const dx = player.x - z.x;
   const dy = player.y - z.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
 
-  const steps = Math.floor(distance); // 1 step per pixel
-  const stepSize = 1; // pixel resolution
+  const stepX = dx > 0 ? 1 : -1;
+  const stepY = dy > 0 ? 1 : -1;
 
-  for (let i = 0; i <= steps; i += stepSize) {
-    const t = i / distance;
-    const x = z.x + dx * t;
-    const y = z.y + dy * t;
+  const deltaDistX = Math.abs(TILE / dx);
+  const deltaDistY = Math.abs(TILE / dy);
 
-    const tileX = Math.floor(x / TILE);
-    const tileY = Math.floor(y / TILE);
+  let sideDistX, sideDistY;
 
-    if (MAP[tileY][tileX] === 1) return false; // wall blocks vision
+  if (dx === 0) {
+    sideDistX = Infinity;
+  } else {
+    const offsetX = (stepX > 0)
+      ? TILE - (z.x % TILE)
+      : (z.x % TILE);
+    sideDistX = (offsetX / Math.abs(dx)) * TILE;
+  }
+
+  if (dy === 0) {
+    sideDistY = Infinity;
+  } else {
+    const offsetY = (stepY > 0)
+      ? TILE - (z.y % TILE)
+      : (z.y % TILE);
+    sideDistY = (offsetY / Math.abs(dy)) * TILE;
+  }
+
+  while (tileX !== endX || tileY !== endY) {
+    if (sideDistX < sideDistY) {
+      sideDistX += deltaDistX * TILE;
+      tileX += stepX;
+    } else {
+      sideDistY += deltaDistY * TILE;
+      tileY += stepY;
+    }
+
+    // Bounds check
+    if (tileY < 0 || tileY >= MAP.length || tileX < 0 || tileX >= MAP[0].length)
+      return false;
+
+    if (MAP[tileY][tileX] === 1) return false; // wall hit
   }
 
   return true;
@@ -264,7 +298,7 @@ function handleTouch(p) {
   if (now - lastTouchTime < 50) return; // throttle touch input to every 100ms
   lastTouchTime = now;
 
-  const ROT = Math.PI / 10;
+  const ROT = Math.PI / 14;
   if (p.x + p.y < cx + cy) {
     if (p.x > p.y) movePlayer(true);
     else {
