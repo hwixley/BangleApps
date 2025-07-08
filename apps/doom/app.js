@@ -350,8 +350,11 @@ function startLevel(level) {
   }, 150);
 
   setWatch(() => {
-    if (player.health > 0 && zombies.length > 0) shoot();
-    else if (zombies.length === 0) {
+    if (player.health <= 0) {
+      clearInterval(renderInterval);
+      setTimeout(() => startLevel(1), 1500);
+    } else if (zombies.length > 0) shoot();
+    else {
       clearInterval(renderInterval);
       setTimeout(() => startLevel(level + 1), 1500);
     }
