@@ -420,21 +420,23 @@ function introAnim() {
 }
 
 function titlePage() {
+  let rendered = false;
   g.clear();
   g.setFont("Vector", 20);
   g.setColor(0, 0, 0);
   g.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
   g.setColor(1, 1, 1);
-  setTimeout(() => g.drawString("D", cx - 60, cy), 500);
-  setTimeout(() => g.drawString("O", cx - 40, cy), 1000);
-  setTimeout(() => g.drawString("O", cx - 20, cy), 1500);
-  setTimeout(() => g.drawString("M", cx, cy), 2000);
-  setTimeout(() => g.setFont("Vector", 10), 2500);
-  setTimeout(() => g.drawString("(recreation)", cx + 20, cy), 3000);
-  setTimeout(() => g.drawString("Harry Wixley 2025", cx - 60, cy+40), 3000);
+  setTimeout(() => rendered ? {} : g.drawString("D", cx - 60, cy), 500);
+  setTimeout(() => rendered ? {} : g.drawString("O", cx - 40, cy), 1000);
+  setTimeout(() => rendered ? {} : g.drawString("O", cx - 20, cy), 1500);
+  setTimeout(() => rendered ? {} : g.drawString("M", cx, cy), 2000);
+  setTimeout(() => rendered ? {} : g.setFont("Vector", 10), 2500);
+  setTimeout(() => rendered ? {} : g.drawString("(recreation)", cx + 20, cy), 3000);
+  setTimeout(() => rendered ? {} : g.drawString("Harry Wixley 2025", cx - 60, cy+40), 3000);
 
   setWatch(
     () => {
+      rendered = true;
       introAnim();
     },
     BTN1,
