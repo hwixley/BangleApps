@@ -53,6 +53,28 @@ function castRayDist(px, py, cos, sin) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function hasLineOfSight(z) {
+  const dx = player.x - z.x;
+  const dy = player.y - z.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  const steps = Math.floor(distance); // 1 step per pixel
+  const stepSize = 1; // pixel resolution
+
+  for (let i = 0; i <= steps; i += stepSize) {
+    const t = i / distance;
+    const x = z.x + dx * t;
+    const y = z.y + dy * t;
+
+    const tileX = Math.floor(x / TILE);
+    const tileY = Math.floor(y / TILE);
+
+    if (MAP[tileY][tileX] === 1) return false; // wall blocks vision
+  }
+
+  return true;
+}
+
 // --- Optimized moveZombies compiled and throttled to every 3 frames ---
 function moveZombiesCompiled() {
   "compiled";
@@ -132,6 +154,7 @@ function zombieScreenData(z) {
 function renderZombies() {
   for (let i = 0; i < zombies.length; i++) {
     let z = zombies[i];
+    if (!hasLineOfSight(z)) continue;
     let s = zombieScreenData(z);
     if (!s) continue;
     let alive = z.health > 0;
