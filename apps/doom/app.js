@@ -109,6 +109,21 @@ function hasLineOfSight(z) {
   return true;
 }
 
+function getZombiesByDistance(ascending) {
+  return zombies
+    .map(z => {
+      const dx = z.x - player.x;
+      const dy = z.y - player.y;
+      return {
+        zombie: z,
+        distSq: dx * dx + dy * dy
+      };
+    })
+    .sort((a, b) => (ascending ?? true) ? a.distSq - b.distSq : b.distSq - a.distSq)
+    .map(entry => entry.zombie);
+}
+
+
 // --- Optimized moveZombies compiled and throttled to every 3 frames ---
 function moveZombiesCompiled() {
   "compiled";
@@ -185,9 +200,15 @@ function zombieScreenData(z) {
   return { x: sx, y: sy, w: w, h: h };
 }
 
+let lastFetchTime = 0;
 function renderZombies() {
-  for (let i = 0; i < zombies.length; i++) {
-    let z = zombies[i];
+  let zombos = zombies;
+  const now = getTime()*1000;
+  if (now - lastFetchTime < 1000) zombos = getZombiesByDistance(false); // throttle shoot input to every 100ms
+  lastFetchTime = now;
+  
+  for (let i = 0; i < zombos.length; i++) {
+    let z = zombos[i];
     if (!hasLineOfSight(z)) continue;
     let s = zombieScreenData(z);
     if (!s) continue;
@@ -262,12 +283,13 @@ function shoot() {
   const now = getTime()*1000;
   if (now - lastShootTime < 100) return; // throttle shoot input to every 100ms
   lastShootTime = now;
-  for (let j = 0; j < zombies.length; j++) {
-    let z = zombies[j];
+  let zombos = getZombiesByDistance();
+  for (let j = 0; j < zombos.length; j++) {
+    let z = zombos[j];
     let s = zombieScreenData(z);
     if (s && Math.abs(s.x - cx) <= s.w/2) {
       z.health--;
-      if (z.health === 0) {
+      if (z.health <= 0) {
         player.kills++;
         g.setColor(1, 0, 0).drawString("KILL", cx, cy);
         setTimeout(() => zombies.splice(j, 1), 500);
@@ -277,6 +299,7 @@ function shoot() {
       break;
     }
   }
+
   let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 15 + Math.random() * 2, hit: true }];
   let bulletTimer = setInterval(() => {
     for (let i = bullets.length - 1; i >= 0; i--) {
