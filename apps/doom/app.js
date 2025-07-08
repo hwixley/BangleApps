@@ -20,6 +20,7 @@ const MAP = [
 ];
 const FOV = Math.PI / 4;
 const MAX_HEALTH = 10;
+const CROSSHAIR_RADIUS = SCREEN_WIDTH / 8;
 
 // --- GLOBALS ---
 let player, zombies, game;
@@ -51,6 +52,77 @@ function castRayDist(px, py, cos, sin) {
   var dy = y - py;
   return Math.sqrt(dx * dx + dy * dy);
 }
+
+function hasLineOfSight(z) {
+  // Convert world coords to tile coords (as floats)
+  let tileX = Math.floor(z.x / TILE);
+  let tileY = Math.floor(z.y / TILE);
+
+  const endX = Math.floor(player.x / TILE);
+  const endY = Math.floor(player.y / TILE);
+
+  const dx = player.x - z.x;
+  const dy = player.y - z.y;
+
+  const stepX = dx > 0 ? 1 : -1;
+  const stepY = dy > 0 ? 1 : -1;
+
+  const deltaDistX = Math.abs(TILE / dx);
+  const deltaDistY = Math.abs(TILE / dy);
+
+  let sideDistX, sideDistY;
+
+  if (dx === 0) {
+    sideDistX = Infinity;
+  } else {
+    const offsetX = (stepX > 0)
+      ? TILE - (z.x % TILE)
+      : (z.x % TILE);
+    sideDistX = (offsetX / Math.abs(dx)) * TILE;
+  }
+
+  if (dy === 0) {
+    sideDistY = Infinity;
+  } else {
+    const offsetY = (stepY > 0)
+      ? TILE - (z.y % TILE)
+      : (z.y % TILE);
+    sideDistY = (offsetY / Math.abs(dy)) * TILE;
+  }
+
+  while (tileX !== endX || tileY !== endY) {
+    if (sideDistX < sideDistY) {
+      sideDistX += deltaDistX * TILE;
+      tileX += stepX;
+    } else {
+      sideDistY += deltaDistY * TILE;
+      tileY += stepY;
+    }
+
+    // Bounds check
+    if (tileY < 0 || tileY >= MAP.length || tileX < 0 || tileX >= MAP[0].length)
+      return false;
+
+    if (MAP[tileY][tileX] === 1) return false; // wall hit
+  }
+
+  return true;
+}
+
+function getZombiesByDistance(ascending) {
+  return zombies
+    .map(z => {
+      const dx = z.x - player.x;
+      const dy = z.y - player.y;
+      return {
+        zombie: z,
+        distSq: dx * dx + dy * dy
+      };
+    })
+    .sort((a, b) => (ascending ?? true) ? a.distSq - b.distSq : b.distSq - a.distSq)
+    .map(entry => entry.zombie);
+}
+
 
 // --- Optimized moveZombies compiled and throttled to every 3 frames ---
 function moveZombiesCompiled() {
@@ -128,9 +200,16 @@ function zombieScreenData(z) {
   return { x: sx, y: sy, w: w, h: h };
 }
 
+let lastFetchTime = 0;
 function renderZombies() {
-  for (let i = 0; i < zombies.length; i++) {
-    let z = zombies[i];
+  let zombos = zombies;
+  const now = getTime()*1000;
+  if (now - lastFetchTime < 1000) zombos = getZombiesByDistance(false); // throttle shoot input to every 100ms
+  lastFetchTime = now;
+  
+  for (let i = 0; i < zombos.length; i++) {
+    let z = zombos[i];
+    if (!hasLineOfSight(z)) continue;
     let s = zombieScreenData(z);
     if (!s) continue;
     let alive = z.health > 0;
@@ -159,6 +238,11 @@ function renderHUD() {
   g.setFont("Vector", 10).drawString("Level " + game.level, cx - 10, 20);
   g.drawString("Kills:", SCREEN_WIDTH - 40, 20);
   g.setFont("Vector", 20).drawString(player.kills, SCREEN_WIDTH - 40, 30);
+  g.setColor(85,85,85)
+  g.fillRect(cx - CROSSHAIR_RADIUS*1.5, cy, cx - CROSSHAIR_RADIUS*0.5, cy)
+  g.fillRect(cx, cy - CROSSHAIR_RADIUS*0.5, cx, cy - CROSSHAIR_RADIUS*1.5)
+  g.fillRect(cx + CROSSHAIR_RADIUS*0.5, cy, cx + CROSSHAIR_RADIUS*1.5, cy)
+  g.fillRect(cx, cy + CROSSHAIR_RADIUS*1.5, cx, cy+CROSSHAIR_RADIUS*0.5)
 }
 
 function renderScene() {
@@ -169,8 +253,9 @@ function renderScene() {
   g.clear();
   g.setColor(0, 0, 0).fillRect(0, 0, SCREEN_WIDTH, cy);
   g.setColor(0.5, 0.25, 0).fillRect(0, cy, SCREEN_WIDTH, SCREEN_HEIGHT);
+  let COL_WIDTH = 12
 
-  for (let i = 0; i < SCREEN_WIDTH; i += 8) {
+  for (let i = 0; i < SCREEN_WIDTH; i += COL_WIDTH) {
     let angle = player.angle - FOV / 2 + (i / SCREEN_WIDTH) * FOV;
     let cosA = Math.cos(angle);
     let sinA = Math.sin(angle);
@@ -180,7 +265,7 @@ function renderScene() {
     let c = Math.floor(Math.max(0, 7 - d * 0.25)) / 7;
     g.setColor(c, c, c);
     let y = (SCREEN_HEIGHT - h) / 2;
-    g.fillRect(i, y, i + 6, y + h);
+    g.fillRect(i, y, i + COL_WIDTH, y + h);
   }
 
   renderZombies();
@@ -193,47 +278,50 @@ function renderScene() {
   g.flip();
 }
 
+let lastShootTime = 0;
 function shoot() {
-  let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 3 + Math.random() * 2, hit: true }];
+  const now = getTime()*1000;
+  if (now - lastShootTime < 100) return; // throttle shoot input to every 100ms
+  lastShootTime = now;
+  let zombos = getZombiesByDistance();
+  for (let j = 0; j < zombos.length; j++) {
+    let z = zombos[j];
+    let s = zombieScreenData(z);
+    if (s && Math.abs(s.x - cx) <= s.w/2) {
+      z.health--;
+      if (z.health <= 0) {
+        player.kills++;
+        g.setColor(1, 0, 0).drawString("KILL", cx, cy);
+        setTimeout(() => zombies.splice(j, 1), 500);
+      } else {
+        g.setColor(1, 0, 0).drawString("HIT", cx, cy);
+      }
+      break;
+    }
+  }
+
+  let bullets = [{ x: cx, y: SCREEN_HEIGHT, s: 20, v: 15 + Math.random() * 2, hit: true }];
   let bulletTimer = setInterval(() => {
     for (let i = bullets.length - 1; i >= 0; i--) {
       let b = bullets[i];
       g.setColor(1, 1, 1).fillCircle(b.x, b.y, b.s);
       if (b.y > cy) b.y -= b.v;
-      b.s *= 0.9;
-      if (b.hit) {
-        for (let j = 0; j < zombies.length; j++) {
-          let z = zombies[j];
-          let s = zombieScreenData(z);
-          if (s && Math.abs(s.x - cx) < 20) {
-            z.health--;
-            if (z.health === 0) {
-              player.kills++;
-              g.setColor(1, 0, 0).drawString("KILL", cx, cy);
-              setTimeout(() => zombies.splice(j, 1), 500);
-            } else {
-              g.setColor(1, 0, 0).drawString("HIT", cx, cy);
-            }
-            b.hit = false;
-            break;
-          }
-        }
-      }
+      b.s *= 0.68;
       if (b.s < 2) bullets.splice(i, 1);
       else g.setColor(1, 0, 0).fillCircle(b.x, b.y, b.s);
     }
     g.flip();
   }, 100);
-  setTimeout(() => clearInterval(bulletTimer), 2000);
+  setTimeout(() => clearInterval(bulletTimer), 500);
 }
 
 let lastTouchTime = 0;
 function handleTouch(p) {
   const now = getTime()*1000;
-  if (now - lastTouchTime < 50) return; // throttle touch input to every 100ms
+  if (now - lastTouchTime < 100) return; // throttle touch input to every 100ms
   lastTouchTime = now;
 
-  const ROT = Math.PI / 12;
+  const ROT = Math.PI / 14;
   if (p.x + p.y < cx + cy) {
     if (p.x > p.y) movePlayer(true);
     else {
@@ -285,8 +373,11 @@ function startLevel(level) {
   }, 150);
 
   setWatch(() => {
-    if (player.health > 0 && zombies.length > 0) shoot();
-    else if (zombies.length === 0) {
+    if (player.health <= 0) {
+      clearInterval(renderInterval);
+      setTimeout(() => startLevel(1), 1500);
+    } else if (zombies.length > 0) shoot();
+    else {
       clearInterval(renderInterval);
       setTimeout(() => startLevel(level + 1), 1500);
     }
@@ -352,21 +443,23 @@ function introAnim() {
 }
 
 function titlePage() {
+  let rendered = false;
   g.clear();
   g.setFont("Vector", 20);
   g.setColor(0, 0, 0);
   g.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
   g.setColor(1, 1, 1);
-  setTimeout(() => g.drawString("D", cx - 60, cy), 500);
-  setTimeout(() => g.drawString("O", cx - 40, cy), 1000);
-  setTimeout(() => g.drawString("O", cx - 20, cy), 1500);
-  setTimeout(() => g.drawString("M", cx, cy), 2000);
-  setTimeout(() => g.setFont("Vector", 10), 2500);
-  setTimeout(() => g.drawString("(recreation)", cx + 20, cy), 3000);
-  setTimeout(() => g.drawString("Harry Wixley 2025", cx - 60, cy+40), 3000);
+  setTimeout(() => rendered ? {} : g.drawString("D", cx - 60, cy), 500);
+  setTimeout(() => rendered ? {} : g.drawString("O", cx - 40, cy), 1000);
+  setTimeout(() => rendered ? {} : g.drawString("O", cx - 20, cy), 1500);
+  setTimeout(() => rendered ? {} : g.drawString("M", cx, cy), 2000);
+  setTimeout(() => rendered ? {} : g.setFont("Vector", 10), 2500);
+  setTimeout(() => rendered ? {} : g.drawString("(recreation)", cx + 20, cy), 3000);
+  setTimeout(() => rendered ? {} : g.drawString("Harry Wixley 2025", cx - 60, cy+40), 3000);
 
   setWatch(
     () => {
+      rendered = true;
       introAnim();
     },
     BTN1,

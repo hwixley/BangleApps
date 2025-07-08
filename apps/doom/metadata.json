@@ -2,13 +2,15 @@
   "id": "doom",
   "name": "DOOM",
   "shortName": "DOOM",
-  "version": "0.02",
+  "version": "0.03",
   "description": "This project is a fan-made recreation inspired by the original DOOM® game by id Software. It is not affiliated with, endorsed by, or associated with id Software, Bethesda Softworks, or ZeniMax Media in any way. Please see LICENSE for usage.\n\nA simple zombie game. You have to kill all zombies to win a round. The round number corresponds to the number of zombies in the room. The round number will increase indefinitely if you have what it takes.",
   "icon": "app.png",
   "screenshots": [
     { "url": "screenshots/title.png" },
     { "url": "screenshots/hud.png" },
-    { "url": "screenshots/alien.png" },
+    { "url": "screenshots/zombies.png" },
+    { "url": "screenshots/kill.png" },
+    { "url": "screenshots/success.png" },
     { "url": "screenshots/death.png" }
   ],
   "readme": "README.md",
